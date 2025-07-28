@@ -183,6 +183,174 @@ The order in which I developed the frontend is:
 3. Create essential components and group them inside the components folder
 4. Set up the routes in `App.jsx`
 
+### `api.js`
+In order to connect the backend with the frontend, we need to define the routes to which the information from the frontend will be sent. I used `axios` because of its clean syntax - Axios is a promise-based HTTP Client for `node.js` and the browser - instead of using the native `fetch()` method. For each function, you need to define the information to pass in from the frontend such as `userData`, `credentials`, and `tokens`. Then, you'll need to define the backend URL with the appropriate method. 
+
+```javascript
+import axios from 'axios';
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:5000";
+
+export async function registerUser(userData) {
+    try {
+        const response = await axios.post(`${BACKEND_URL}/register`, {
+            username: userData.username,
+            email: userData.email,
+            password: userData.password
+        });
+        return response.data;
+    } catch (error) {
+        console.error(error.response?.data || error.message);
+        throw error;
+    }
+}
+
+export async function loginUser(credentials) {
+    try {
+        const response = await axios.post(`${BACKEND_URL}/login`, {
+            login: credentials.login,
+            password: credentials.password
+        });
+        return response.data;
+    } catch (error) {
+        console.error(error.response?.data || error.message);
+        throw error;
+    }
+}
+
+export async function logoutUser(token) {
+    try {
+        const response = await axios.delete(`${BACKEND_URL}/logout`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+        return response.data;
+    } catch (error) {
+        console.error(error.response?.data || error.message);
+        throw error;
+    }
+}
+```
+
+### `AuthContext.jsx`
+Context provides a way to pass data through the component tree without having to pass props down manually at every level. That means you just need to define the context once and wrap the child components within the provider - the values of the provider will be passed down to the children. 
+
+useEffect() is a React Hook that lets you perform side effects in functional components. Side effects are things like:
+- API calls
+- Setting up subscriptions
+- Reading from localStorage
+- Updating the DOM
+```
+User visits your app
+     ↓
+AuthProvider component loads
+     ↓  
+useEffect runs (checks localStorage)
+     ↓
+If token exists → User stays logged in ✅
+If no token → User sees login form ❌
+     ↓
+setLoading(false) → App is ready to use
+```
+
+- `localStorage.getItem()` is a browser API method for retrieving data that you've previously stored locally. localStorage is like a small database that lives in the user's browser. It can store key-value pairs that persist even after the browser is closed.
+
+```javascript
+import { createContext, useContext, useState, useEffect } from 'react';
+import { loginUser, registerUser, logoutUser } from '../api';
+
+const AuthContext = createContext();
+
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (!context) {
+        throw new Error('useAuth must be used within an AuthProvider');
+    }
+    return context;
+}
+
+export const AuthProvider = ({ children }) => {
+    const [user, setUser] = useState(null);
+    const [token, setToken] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const storedToken = localStorage.getItem('token');
+        const storedUser = localStorage.getItem('user');
+
+        if (storedToken && storedUser) {
+            setToken(storedToken);
+            setUser(JSON.parse(storedUser));
+        }
+        setLoading(false);
+    }, []);
+
+    const login = async (credentials) => {
+        // eslint-disable-next-line no-useless-catch
+        try {
+            const response = await loginUser(credentials);
+
+            setToken(response.access_token);
+            setUser(response.user);
+
+            localStorage.setItem('token', response.access_token);
+            localStorage.setItem('user', JSON.stringify(response.user));
+
+            return response;
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    const register = async (userData) => {
+        // eslint-disable-next-line no-useless-catch
+        try {
+            const response = await registerUser(userData);
+            setToken(response.access_token);
+            setUser(response.user);
+
+            // Store the data first
+            localStorage.setItem('token', response.access_token);
+            localStorage.setItem('user', JSON.stringify(response.user));
+
+            return response;
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    const logout = async () => {
+        // eslint-disable-next-line no-useless-catch
+        try {
+            if (token) {
+                await logoutUser(token);
+            }
+
+            setToken(null);
+            setUser(null);
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    return (
+        <AuthContext.Provider value={{
+            user,
+            token,
+            loading,
+            login, 
+            register,
+            logout
+        }}>
+            {children}
+        </AuthContext.Provider>
+    )
+}
+```
 # Resources
 [1] https://react.dev/learn/passing-data-deeply-with-context
 
